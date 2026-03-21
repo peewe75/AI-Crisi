@@ -7,7 +7,7 @@ import { createKnowledgeBaseEmbedding } from "@/lib/ai/embedding";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const IL_CASO_CRISI_IMPRESA_URL = "https://www.ilcaso.it/riviste/CrisiImpresa";
-const SCRAPE_LIMIT = 5;
+const SCRAPE_LIMIT = 3;
 const REQUEST_HEADERS = {
   "user-agent":
     "AI-Crisi-Bot/1.0 (+https://ai-crisi.vercel.app; monitoring giurisprudenza)",
@@ -364,7 +364,7 @@ export async function syncGiurisprudenzaFromIlCaso() {
       });
     }
 
-    await sleep(800);
+    await sleep(250);
   }
 
   return {
