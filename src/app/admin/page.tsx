@@ -294,7 +294,10 @@ export default async function AdminOverviewPage({
               </select>
             </label>
             <div className="flex items-end gap-3">
-              <Button className="h-11 bg-emerald-700 text-white hover:bg-emerald-600">
+              <Button
+                type="submit"
+                className="h-11 bg-emerald-700 text-white hover:bg-emerald-600"
+              >
                 Applica
               </Button>
               <Link href="/admin">
