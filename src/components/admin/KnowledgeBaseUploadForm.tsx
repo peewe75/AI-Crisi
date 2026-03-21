@@ -1,8 +1,9 @@
 ﻿"use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { FileRejection, useDropzone } from "react-dropzone";
-import { FileText, Loader2, Upload } from "lucide-react";
+import { FileText, Loader2, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -43,6 +44,7 @@ async function readFileWithEncodingFallback(file: File) {
 }
 
 export default function KnowledgeBaseUploadForm() {
+  const router = useRouter();
   const [markdownText, setMarkdownText] = useState("");
   const [category, setCategory] =
     useState<(typeof CATEGORY_OPTIONS)[number]>("Giurisprudenza");
@@ -55,7 +57,6 @@ export default function KnowledgeBaseUploadForm() {
 
   async function loadFiles(files: File[]) {
     if (files.length === 0) {
-      setDocuments([]);
       return;
     }
 
@@ -67,7 +68,26 @@ export default function KnowledgeBaseUploadForm() {
       }))
     );
 
-    setDocuments(loaded.filter((entry) => entry.content.trim().length > 0));
+    setDocuments((currentDocuments) => {
+      const nextDocuments = [...currentDocuments];
+
+      for (const entry of loaded) {
+        if (!entry.content.trim().length) {
+          continue;
+        }
+
+        const alreadyPresent = nextDocuments.some(
+          (document) =>
+            document.filename === entry.filename && document.size === entry.size
+        );
+
+        if (!alreadyPresent) {
+          nextDocuments.push(entry);
+        }
+      }
+
+      return nextDocuments;
+    });
   }
 
   function validateFile(file: File) {
@@ -86,9 +106,13 @@ export default function KnowledgeBaseUploadForm() {
     return null;
   }
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+  const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
     multiple: true,
+    noClick: true,
     disabled: isPending,
+    accept: {
+      "text/plain": ALLOWED_FILE_EXTENSIONS,
+    },
     validator: validateFile,
     onDrop: (acceptedFiles) => {
       setError(null);
@@ -102,6 +126,15 @@ export default function KnowledgeBaseUploadForm() {
       );
     },
   });
+
+  function removeDocument(filename: string, size: number) {
+    setDocuments((currentDocuments) =>
+      currentDocuments.filter(
+        (document) =>
+          !(document.filename === filename && document.size === size)
+      )
+    );
+  }
 
   function handleSubmit() {
     setError(null);
@@ -132,6 +165,13 @@ export default function KnowledgeBaseUploadForm() {
         }
 
         setResult(payload as IngestResponse);
+        router.refresh();
+
+        if (importMode === "paste") {
+          setMarkdownText("");
+        } else {
+          setDocuments([]);
+        }
       } catch (requestError) {
         setError(
           requestError instanceof Error
@@ -267,7 +307,16 @@ export default function KnowledgeBaseUploadForm() {
                         Ogni file puo contenere uno o piu documenti separati da `---`.
                       </p>
                     </div>
-                    <Button type="button" variant="outline" className="border-slate-200">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="border-slate-200"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        open();
+                      }}
+                    >
                       Sfoglia file
                     </Button>
                   </div>
@@ -286,11 +335,23 @@ export default function KnowledgeBaseUploadForm() {
                         >
                           <div className="flex items-center gap-2 text-slate-700">
                             <FileText className="h-4 w-4 text-emerald-700" />
-                            <span>{document.filename}</span>
+                            <span className="break-all">{document.filename}</span>
                           </div>
-                          <span className="text-xs text-slate-500">
-                            {(document.size / 1024).toFixed(1)} KB
-                          </span>
+                          <div className="ml-3 flex items-center gap-2">
+                            <span className="text-xs text-slate-500">
+                              {(document.size / 1024).toFixed(1)} KB
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                removeDocument(document.filename, document.size)
+                              }
+                              className="rounded-full p-1 text-slate-400 transition hover:bg-slate-200 hover:text-slate-700"
+                              aria-label={`Rimuovi ${document.filename}`}
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
