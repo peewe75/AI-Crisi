@@ -29,7 +29,9 @@ export async function GET(request: Request) {
 
     return NextResponse.json(
       {
-        message: "Sincronizzazione giurisprudenza completata.",
+        message: result.skippedDueToInterval
+          ? "Sincronizzazione giurisprudenza saltata per intervallo minimo di 48 ore."
+          : "Sincronizzazione giurisprudenza completata.",
         ...result,
       },
       { status: 200 }
