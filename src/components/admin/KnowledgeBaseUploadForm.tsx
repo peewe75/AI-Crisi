@@ -1,9 +1,9 @@
 ﻿"use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FileRejection, useDropzone } from "react-dropzone";
-import { FileText, Loader2, Upload, X } from "lucide-react";
+import { FileText, Loader2, Square, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -45,7 +45,7 @@ async function readFileWithEncodingFallback(file: File) {
 
 export default function KnowledgeBaseUploadForm() {
   const router = useRouter();
-  const directoryInputRef = useRef<HTMLInputElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [markdownText, setMarkdownText] = useState("");
   const [category, setCategory] =
     useState<(typeof CATEGORY_OPTIONS)[number]>("Giurisprudenza");
@@ -54,7 +54,8 @@ export default function KnowledgeBaseUploadForm() {
   const [documents, setDocuments] = useState<UploadDocument[]>([]);
   const [result, setResult] = useState<IngestResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   async function loadFiles(files: File[]) {
     if (files.length === 0) {
@@ -91,7 +92,7 @@ export default function KnowledgeBaseUploadForm() {
     });
   }
 
-  function handleDirectorySelection(event: React.ChangeEvent<HTMLInputElement>) {
+  function handleFileSelection(event: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
     setError(null);
     void loadFiles(files);
@@ -114,10 +115,10 @@ export default function KnowledgeBaseUploadForm() {
     return null;
   }
 
-  const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
     multiple: true,
     noClick: true,
-    disabled: isPending,
+    disabled: isSubmitting,
     accept: {
       "text/plain": ALLOWED_FILE_EXTENSIONS,
     },
@@ -144,50 +145,117 @@ export default function KnowledgeBaseUploadForm() {
     );
   }
 
-  function handleSubmit() {
+  function mergeIngestResponses(
+    accumulator: IngestResponse,
+    next: IngestResponse
+  ): IngestResponse {
+    return {
+      totalChunks: accumulator.totalChunks + next.totalChunks,
+      processedCount: accumulator.processedCount + next.processedCount,
+      failedCount: accumulator.failedCount + next.failedCount,
+      insertedTitles: [...accumulator.insertedTitles, ...next.insertedTitles],
+      errors: [...accumulator.errors, ...next.errors],
+    };
+  }
+
+  async function sendIngestRequest(payload: {
+    markdownText: string;
+    documents: UploadDocument[];
+    category: (typeof CATEGORY_OPTIONS)[number];
+  }) {
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    const response = await fetch("/api/admin/ingest", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+
+    const resultPayload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(
+        typeof resultPayload?.error === "string"
+          ? resultPayload.error
+          : "Errore durante l'elaborazione della knowledge base."
+      );
+    }
+
+    return resultPayload as IngestResponse;
+  }
+
+  async function handleSubmit() {
     setError(null);
     setResult(null);
+    setIsSubmitting(true);
 
-    startTransition(async () => {
-      try {
-        const response = await fetch("/api/admin/ingest", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            markdownText: importMode === "paste" ? markdownText : "",
-            documents: importMode === "files" ? documents : [],
-            category,
-          }),
+    const emptyResult: IngestResponse = {
+      totalChunks: 0,
+      processedCount: 0,
+      failedCount: 0,
+      insertedTitles: [],
+      errors: [],
+    };
+    let aggregateResult = emptyResult;
+
+    try {
+      if (importMode === "paste") {
+        aggregateResult = await sendIngestRequest({
+          markdownText,
+          documents: [],
+          category,
         });
+      } else {
+        for (const document of documents) {
+          const response = await sendIngestRequest({
+            markdownText: "",
+            documents: [document],
+            category,
+          });
 
-        const payload = await response.json();
-
-        if (!response.ok) {
-          throw new Error(
-            typeof payload?.error === "string"
-              ? payload.error
-              : "Errore durante l'elaborazione della knowledge base."
-          );
+          aggregateResult = mergeIngestResponses(aggregateResult, response);
         }
+      }
 
-        setResult(payload as IngestResponse);
+      setResult(aggregateResult);
+      router.refresh();
+
+      if (importMode === "paste") {
+        setMarkdownText("");
+      } else {
+        setDocuments([]);
+      }
+    } catch (requestError) {
+      if (
+        requestError instanceof DOMException &&
+        requestError.name === "AbortError"
+      ) {
+        setError(
+          "Caricamento interrotto dall'utente. I file gia completati restano importati."
+        );
+        if (aggregateResult.totalChunks > 0) {
+          setResult(aggregateResult);
+        }
         router.refresh();
-
-        if (importMode === "paste") {
-          setMarkdownText("");
-        } else {
-          setDocuments([]);
-        }
-      } catch (requestError) {
+      } else {
         setError(
           requestError instanceof Error
             ? requestError.message
             : "Errore inatteso durante l'ingestione della knowledge base."
         );
       }
-    });
+    } finally {
+      abortControllerRef.current = null;
+      setIsSubmitting(false);
+    }
+  }
+
+  function handleStopUpload() {
+    abortControllerRef.current?.abort();
   }
 
   return (
@@ -248,26 +316,40 @@ export default function KnowledgeBaseUploadForm() {
               </select>
             </div>
 
-            <Button
-              type="button"
-              onClick={handleSubmit}
-              disabled={
-                isPending ||
-                (importMode === "paste"
-                  ? !markdownText.trim()
-                  : documents.length === 0)
-              }
-              className="w-full bg-emerald-700 text-white hover:bg-emerald-600"
-            >
-              {isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Elaborazione in corso
-                </>
-              ) : (
-                "Elabora e Salva nel Vector DB"
-              )}
-            </Button>
+            <div className="grid gap-3">
+              <Button
+                type="button"
+                onClick={handleSubmit}
+                disabled={
+                  isSubmitting ||
+                  (importMode === "paste"
+                    ? !markdownText.trim()
+                    : documents.length === 0)
+                }
+                className="w-full bg-emerald-700 text-white hover:bg-emerald-600"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Elaborazione in corso
+                  </>
+                ) : (
+                  "Elabora e Salva nel Vector DB"
+                )}
+              </Button>
+
+              {isSubmitting ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleStopUpload}
+                  className="w-full border-rose-200 text-rose-700 hover:bg-rose-50"
+                >
+                  <Square className="mr-2 h-4 w-4 fill-current" />
+                  Stop
+                </Button>
+              ) : null}
+            </div>
           </div>
 
           <div className="space-y-4">
@@ -294,16 +376,12 @@ export default function KnowledgeBaseUploadForm() {
                 </span>
                 <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6">
                   <input
-                    ref={directoryInputRef}
+                    ref={fileInputRef}
                     type="file"
                     multiple
                     className="hidden"
                     accept={ALLOWED_FILE_EXTENSIONS.join(",")}
-                    onChange={handleDirectorySelection}
-                    {...({
-                      webkitdirectory: "",
-                      directory: "",
-                    } as Record<string, string>)}
+                    onChange={handleFileSelection}
                   />
                   <div
                     {...getRootProps()}
@@ -311,7 +389,7 @@ export default function KnowledgeBaseUploadForm() {
                       isDragActive
                         ? "border-emerald-400 bg-emerald-50"
                         : "border-slate-200 bg-white hover:border-emerald-300 hover:bg-emerald-50/40"
-                    } ${isPending ? "cursor-not-allowed opacity-70" : ""}`}
+                    } ${isSubmitting ? "cursor-not-allowed opacity-70" : ""}`}
                   >
                     <input {...getInputProps()} />
                     <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700">
@@ -321,7 +399,7 @@ export default function KnowledgeBaseUploadForm() {
                       <p className="font-medium text-slate-900">
                         {isDragActive
                           ? "Rilascia qui i file per importarli"
-                          : "Trascina qui i file oppure clicca per selezionarli"}
+                          : "Trascina qui i file oppure usa il selettore"}
                       </p>
                       <p className="mt-1 text-sm text-slate-500">
                         Ogni file puo contenere uno o piu documenti separati da `---`.
@@ -334,22 +412,10 @@ export default function KnowledgeBaseUploadForm() {
                       onClick={(event) => {
                         event.preventDefault();
                         event.stopPropagation();
-                        open();
+                        fileInputRef.current?.click();
                       }}
                     >
                       Sfoglia file
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="border-slate-200"
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        directoryInputRef.current?.click();
-                      }}
-                    >
-                      Sfoglia cartella
                     </Button>
                   </div>
                 </div>
