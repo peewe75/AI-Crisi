@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/sync-giurisprudenza",
+      "schedule": "0 2 * * 5"
+    }
+  ]
+}
