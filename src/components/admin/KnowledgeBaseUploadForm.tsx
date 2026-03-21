@@ -45,7 +45,6 @@ async function readFileWithEncodingFallback(file: File) {
 
 export default function KnowledgeBaseUploadForm() {
   const router = useRouter();
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [markdownText, setMarkdownText] = useState("");
   const [category, setCategory] =
     useState<(typeof CATEGORY_OPTIONS)[number]>("Giurisprudenza");
@@ -115,7 +114,7 @@ export default function KnowledgeBaseUploadForm() {
     return null;
   }
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+  const { getRootProps, isDragActive } = useDropzone({
     multiple: true,
     noClick: true,
     disabled: isSubmitting,
@@ -376,7 +375,7 @@ export default function KnowledgeBaseUploadForm() {
                 </span>
                 <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6">
                   <input
-                    ref={fileInputRef}
+                    id="kb-file-input"
                     type="file"
                     multiple
                     className="hidden"
@@ -385,13 +384,12 @@ export default function KnowledgeBaseUploadForm() {
                   />
                   <div
                     {...getRootProps()}
-                    className={`flex cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border px-6 py-12 text-center transition ${
+                    className={`flex flex-col items-center justify-center gap-3 rounded-2xl border px-6 py-12 text-center transition ${
                       isDragActive
                         ? "border-emerald-400 bg-emerald-50"
                         : "border-slate-200 bg-white hover:border-emerald-300 hover:bg-emerald-50/40"
                     } ${isSubmitting ? "cursor-not-allowed opacity-70" : ""}`}
                   >
-                    <input {...getInputProps()} />
                     <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700">
                       <Upload className="h-6 w-6" />
                     </div>
@@ -405,18 +403,12 @@ export default function KnowledgeBaseUploadForm() {
                         Ogni file puo contenere uno o piu documenti separati da `---`.
                       </p>
                     </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="border-slate-200"
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        fileInputRef.current?.click();
-                      }}
+                    <label
+                      htmlFor="kb-file-input"
+                      className="inline-flex h-10 cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
                     >
                       Sfoglia file
-                    </Button>
+                    </label>
                   </div>
                 </div>
 
