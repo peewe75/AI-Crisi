@@ -7,12 +7,17 @@ export default async function AdminKnowledgeBasePage({
 }: {
   searchParams: Promise<{
     kbSearch?: string;
+    kbOrigin?: string;
   }>;
 }) {
   await requireAdminAccess();
 
   const params = await searchParams;
   const kbSearch = typeof params.kbSearch === "string" ? params.kbSearch : "";
+  const kbOrigin =
+    params.kbOrigin === "manual" || params.kbOrigin === "cron-sync"
+      ? params.kbOrigin
+      : "all";
 
   return (
     <div className="space-y-8">
@@ -32,7 +37,7 @@ export default async function AdminKnowledgeBasePage({
 
       <div className="grid gap-6 xl:grid-cols-[1.25fr_0.95fr]">
         <KnowledgeBaseUploadForm />
-        <KnowledgeBaseCategoryOverview search={kbSearch} />
+        <KnowledgeBaseCategoryOverview search={kbSearch} origin={kbOrigin} />
       </div>
     </div>
   );

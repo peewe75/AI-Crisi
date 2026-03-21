@@ -6,12 +6,19 @@ import { listLatestKnowledgeBaseEntries } from "@/lib/admin";
 
 export default async function KnowledgeBaseCategoryOverview({
   search = "",
+  origin = "all",
 }: {
   search?: string;
+  origin?: "all" | "manual" | "cron-sync";
 }) {
-  const archive = await listLatestKnowledgeBaseEntries({ limit: 12, search });
+  const archive = await listLatestKnowledgeBaseEntries({ limit: 12, search, origin });
   const items = archive.items;
-  const activeBadges = search ? [`Ricerca: ${search}`] : [];
+  const activeBadges = [
+    search ? `Ricerca: ${search}` : null,
+    origin !== "all"
+      ? `Origine: ${origin === "cron-sync" ? "cron-sync" : "manuale"}`
+      : null,
+  ].filter((badge): badge is string => Boolean(badge));
 
   return (
     <Card className="border-slate-200 shadow-sm">
@@ -29,6 +36,18 @@ export default async function KnowledgeBaseCategoryOverview({
               placeholder="Titolo o contenuto"
               className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-emerald-400"
             />
+          </label>
+          <label className="space-y-2 text-sm text-slate-600">
+            <span className="font-medium text-slate-700">Origine</span>
+            <select
+              name="kbOrigin"
+              defaultValue={origin}
+              className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-emerald-400"
+            >
+              <option value="all">Tutte le origini</option>
+              <option value="manual">Manuale</option>
+              <option value="cron-sync">cron-sync</option>
+            </select>
           </label>
           <div className="flex items-center gap-3">
             <Button
@@ -90,11 +109,28 @@ export default async function KnowledgeBaseCategoryOverview({
               <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                 <div>
                   <p className="font-medium text-slate-900">{item.title}</p>
-                  <p className="mt-1 text-xs text-slate-500">
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                    <span>
                     {item.metadata?.source_file
                       ? `File: ${item.metadata.source_file}`
                       : "Inserimento manuale"}
-                  </p>
+                    </span>
+                    {item.metadata?.ingest_mode === "cron-sync" ? (
+                      <Badge className="bg-sky-100 text-sky-800 hover:bg-sky-100">
+                        cron-sync
+                      </Badge>
+                    ) : null}
+                    {item.metadata?.source_url ? (
+                      <a
+                        href={item.metadata.source_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-medium text-emerald-700 underline underline-offset-2"
+                      >
+                        Apri fonte
+                      </a>
+                    ) : null}
+                  </div>
                 </div>
                 <div className="text-right">
                   <span className="inline-flex rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">

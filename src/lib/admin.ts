@@ -79,15 +79,19 @@ export type AdminKnowledgeBaseItem = {
   metadata: {
     source_file?: string | null;
     ingest_mode?: string | null;
+    source_url?: string | null;
+    source_id?: string | null;
   } | null;
 };
 
 export type KnowledgeBaseArchiveCategory = "Giurisprudenza" | "Normativa" | "Template" | "Skill";
+export type KnowledgeBaseArchiveOriginFilter = "all" | "manual" | "cron-sync";
 
 export type AdminKnowledgeBaseArchive = {
   items: AdminKnowledgeBaseItem[];
   total: number;
   search: string;
+  origin: KnowledgeBaseArchiveOriginFilter;
   countsByCategory: Record<KnowledgeBaseArchiveCategory, number>;
 };
 
@@ -647,10 +651,12 @@ export async function getAdminPracticeDetail(practiceId: string) {
 export async function listLatestKnowledgeBaseEntries(params?: {
   limit?: number;
   search?: string;
+  origin?: KnowledgeBaseArchiveOriginFilter;
 }): Promise<AdminKnowledgeBaseArchive> {
   const supabase = getSupabaseAdminClient();
   const limit = Math.min(Math.max(params?.limit ?? 10, 1), 50);
   const search = params?.search?.trim() ?? "";
+  const origin = params?.origin ?? "all";
   const searchPattern = `%${search}%`;
   const categories: KnowledgeBaseArchiveCategory[] = [
     "Giurisprudenza",
@@ -671,6 +677,14 @@ export async function listLatestKnowledgeBaseEntries(params?: {
     );
   }
 
+  if (origin === "cron-sync") {
+    itemsQuery = itemsQuery.eq("metadata->>ingest_mode", "cron-sync");
+  } else if (origin === "manual") {
+    itemsQuery = itemsQuery.or(
+      "metadata->>ingest_mode.is.null,metadata->>ingest_mode.neq.cron-sync"
+    );
+  }
+
   const countQueries = categories.map((category) => {
     let query = supabase
       .from("knowledge_base")
@@ -679,6 +693,14 @@ export async function listLatestKnowledgeBaseEntries(params?: {
 
     if (search) {
       query = query.or(`title.ilike.${searchPattern},content.ilike.${searchPattern}`);
+    }
+
+    if (origin === "cron-sync") {
+      query = query.eq("metadata->>ingest_mode", "cron-sync");
+    } else if (origin === "manual") {
+      query = query.or(
+        "metadata->>ingest_mode.is.null,metadata->>ingest_mode.neq.cron-sync"
+      );
     }
 
     return query;
@@ -720,6 +742,7 @@ export async function listLatestKnowledgeBaseEntries(params?: {
     items: (data ?? []) as AdminKnowledgeBaseItem[],
     total: count ?? 0,
     search,
+    origin,
     countsByCategory,
   };
 }
