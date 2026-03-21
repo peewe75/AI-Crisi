@@ -109,6 +109,13 @@ export type AdminBackgroundSyncRunPage = {
   nextEligibleSyncAt: string | null;
 };
 
+export type AdminBackgroundSyncStatusFilter =
+  | "all"
+  | "running"
+  | "success"
+  | "skipped_interval"
+  | "failed";
+
 function getAdminRole(sessionClaims: SessionClaimsLike) {
   return (
     sessionClaims?.metadata?.role ??
@@ -642,21 +649,29 @@ export async function listLatestKnowledgeBaseEntries(params?: { limit?: number }
 export async function listAdminBackgroundSyncRuns(params?: {
   jobName?: string;
   limit?: number;
+  status?: AdminBackgroundSyncStatusFilter;
 }): Promise<AdminBackgroundSyncRunPage> {
   const supabase = getSupabaseAdminClient();
   const limit = Math.min(Math.max(params?.limit ?? 20, 1), 100);
   const jobName = params?.jobName?.trim() || "sync-giurisprudenza-ilcaso";
+  const status = params?.status ?? "all";
+
+  let runsQuery = supabase
+    .from("background_sync_runs")
+    .select(
+      "id, job_name, status, started_at, finished_at, inserted_count, skipped_count, failed_count, metadata",
+      { count: "exact" }
+    )
+    .eq("job_name", jobName)
+    .order("started_at", { ascending: false })
+    .limit(limit);
+
+  if (status !== "all") {
+    runsQuery = runsQuery.eq("status", status);
+  }
 
   const [runsResponse, latestSuccessResponse] = await Promise.all([
-    supabase
-      .from("background_sync_runs")
-      .select(
-        "id, job_name, status, started_at, finished_at, inserted_count, skipped_count, failed_count, metadata",
-        { count: "exact" }
-      )
-      .eq("job_name", jobName)
-      .order("started_at", { ascending: false })
-      .limit(limit),
+    runsQuery,
     supabase
       .from("background_sync_runs")
       .select("finished_at")

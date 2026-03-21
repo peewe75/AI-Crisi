@@ -1,5 +1,16 @@
-import { Activity, CalendarClock, CheckCircle2, Clock3, RefreshCw, TriangleAlert, XCircle } from "lucide-react";
+import Link from "next/link";
+import {
+  Activity,
+  CalendarClock,
+  CheckCircle2,
+  Clock3,
+  RefreshCw,
+  TriangleAlert,
+  XCircle,
+} from "lucide-react";
+import BackgroundSyncRunTrigger from "@/components/admin/BackgroundSyncRunTrigger";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -12,9 +23,20 @@ import {
 import {
   listAdminBackgroundSyncRuns,
   requireAdminAccess,
+  type AdminBackgroundSyncStatusFilter,
 } from "@/lib/admin";
 
 const JOB_NAME = "sync-giurisprudenza-ilcaso";
+const STATUS_OPTIONS: Array<{
+  value: AdminBackgroundSyncStatusFilter;
+  label: string;
+}> = [
+  { value: "all", label: "Tutti gli stati" },
+  { value: "success", label: "Success" },
+  { value: "skipped_interval", label: "Skip 48h" },
+  { value: "failed", label: "Failed" },
+  { value: "running", label: "Running" },
+];
 
 function formatDateTime(value: string | null) {
   if (!value) {
@@ -25,6 +47,14 @@ function formatDateTime(value: string | null) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
+}
+
+function buildSyncRunsHref(status: AdminBackgroundSyncStatusFilter) {
+  if (status === "all") {
+    return "/admin/sync-runs";
+  }
+
+  return `/admin/sync-runs?status=${status}`;
 }
 
 function getStatusBadge(status: string) {
@@ -60,12 +90,28 @@ function getStatusBadge(status: string) {
   }
 }
 
-export default async function AdminSyncRunsPage() {
+export default async function AdminSyncRunsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    status?: string;
+  }>;
+}) {
   await requireAdminAccess();
+
+  const params = await searchParams;
+  const status =
+    params.status === "success" ||
+    params.status === "skipped_interval" ||
+    params.status === "failed" ||
+    params.status === "running"
+      ? params.status
+      : "all";
 
   const runPage = await listAdminBackgroundSyncRuns({
     jobName: JOB_NAME,
     limit: 30,
+    status,
   });
   const runs = runPage.items;
   const latestRun = runs[0] ?? null;
@@ -80,6 +126,7 @@ export default async function AdminSyncRunsPage() {
   const totalSkipped = runs.filter(
     (run) => run.status === "skipped_interval"
   ).length;
+  const activeBadges = status !== "all" ? [`Stato: ${STATUS_OPTIONS.find((option) => option.value === status)?.label ?? status}`] : [];
 
   return (
     <div className="space-y-8">
@@ -97,69 +144,146 @@ export default async function AdminSyncRunsPage() {
         </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <Card className="border-slate-200 shadow-sm">
+            <CardContent className="p-5">
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                Ultimo stato
+              </p>
+              <div className="mt-3">
+                {latestRun ? getStatusBadge(latestRun.status) : "Nessun run"}
+              </div>
+              <p className="mt-3 text-sm text-slate-500">
+                {latestRun
+                  ? formatDateTime(latestRun.finished_at ?? latestRun.started_at)
+                  : "Nessun dato"}
+              </p>
+            </CardContent>
+          </Card>
+          <Card className="border-slate-200 shadow-sm">
+            <CardContent className="p-5">
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                Ultimo success
+              </p>
+              <p className="mt-3 text-lg font-semibold text-slate-950">
+                {formatDateTime(runPage.latestSuccessAt)}
+              </p>
+              <p className="mt-2 text-sm text-slate-500">
+                Prossima finestra: {formatDateTime(runPage.nextEligibleSyncAt)}
+              </p>
+            </CardContent>
+          </Card>
+          <Card className="border-slate-200 shadow-sm">
+            <CardContent className="p-5">
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                Pronunce inserite
+              </p>
+              <p className="mt-3 text-3xl font-semibold text-slate-950">
+                {totalInserted}
+              </p>
+              <p className="mt-2 text-sm text-slate-500">
+                Somma dei record aggiunti nei run visibili
+              </p>
+            </CardContent>
+          </Card>
+          <Card className="border-slate-200 shadow-sm">
+            <CardContent className="p-5">
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                Skip / errori
+              </p>
+              <p className="mt-3 text-3xl font-semibold text-slate-950">
+                {totalSkipped} / {totalFailed}
+              </p>
+              <p className="mt-2 text-sm text-slate-500">
+                Skip per intervallo / singoli errori batch
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
         <Card className="border-slate-200 shadow-sm">
-          <CardContent className="p-5">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
-              Ultimo stato
+          <CardHeader className="border-b border-slate-100 bg-slate-50/70">
+            <CardTitle className="flex items-center gap-2 text-xl text-slate-950">
+              <RefreshCw className="h-5 w-5 text-emerald-700" />
+              Operazioni manuali
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 pt-6">
+            <p className="text-sm leading-6 text-slate-600">
+              Esegue il worker subito con le stesse regole del cron. Se il
+              vincolo di 48 ore e ancora attivo, il run viene registrato come
+              <code> skipped_interval</code> senza toccare scraping o Gemini.
             </p>
-            <div className="mt-3">{latestRun ? getStatusBadge(latestRun.status) : "Nessun run"}</div>
-            <p className="mt-3 text-sm text-slate-500">
-              {latestRun
-                ? formatDateTime(latestRun.finished_at ?? latestRun.started_at)
-                : "Nessun dato"}
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="border-slate-200 shadow-sm">
-          <CardContent className="p-5">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
-              Ultimo success
-            </p>
-            <p className="mt-3 text-lg font-semibold text-slate-950">
-              {formatDateTime(runPage.latestSuccessAt)}
-            </p>
-            <p className="mt-2 text-sm text-slate-500">
-              Prossima finestra: {formatDateTime(runPage.nextEligibleSyncAt)}
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="border-slate-200 shadow-sm">
-          <CardContent className="p-5">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
-              Pronunce inserite
-            </p>
-            <p className="mt-3 text-3xl font-semibold text-slate-950">
-              {totalInserted}
-            </p>
-            <p className="mt-2 text-sm text-slate-500">
-              Somma dei record aggiunti nei run visibili
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="border-slate-200 shadow-sm">
-          <CardContent className="p-5">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
-              Skip / errori
-            </p>
-            <p className="mt-3 text-3xl font-semibold text-slate-950">
-              {totalSkipped} / {totalFailed}
-            </p>
-            <p className="mt-2 text-sm text-slate-500">
-              Skip per intervallo / singoli errori batch
-            </p>
+            <BackgroundSyncRunTrigger />
           </CardContent>
         </Card>
       </div>
 
       <Card className="border-slate-200 shadow-sm">
         <CardHeader className="border-b border-slate-100 bg-slate-50/70">
-          <CardTitle className="flex items-center gap-2 text-xl text-slate-950">
-            <Activity className="h-5 w-5 text-emerald-700" />
-            Storico run {JOB_NAME}
-          </CardTitle>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <CardTitle className="flex items-center gap-2 text-xl text-slate-950">
+              <Activity className="h-5 w-5 text-emerald-700" />
+              Storico run {JOB_NAME}
+            </CardTitle>
+            <form className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <label className="space-y-2 text-sm text-slate-600">
+                <span className="font-medium text-slate-700">Filtro stato</span>
+                <select
+                  name="status"
+                  defaultValue={status}
+                  className="h-10 min-w-52 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-emerald-400"
+                >
+                  {STATUS_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="flex items-center gap-3">
+                <Button
+                  type="submit"
+                  className="h-10 bg-emerald-700 text-white hover:bg-emerald-600"
+                >
+                  Applica
+                </Button>
+                <Link href="/admin/sync-runs">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-10 border-slate-200"
+                  >
+                    Reset
+                  </Button>
+                </Link>
+              </div>
+            </form>
+          </div>
         </CardHeader>
         <CardContent className="p-0">
+          {activeBadges.length > 0 ? (
+            <div className="flex flex-wrap gap-2 border-b border-slate-100 px-6 py-4">
+              {activeBadges.map((badge) => (
+                <Badge
+                  key={badge}
+                  variant="outline"
+                  className="border-emerald-200 bg-emerald-50 text-emerald-800"
+                >
+                  {badge}
+                </Badge>
+              ))}
+              <Link href="/admin/sync-runs">
+                <Badge
+                  variant="outline"
+                  className="border-slate-200 text-slate-600"
+                >
+                  Reset filtri
+                </Badge>
+              </Link>
+            </div>
+          ) : null}
           {runs.length > 0 ? (
             <Table>
               <TableHeader>
@@ -248,7 +372,7 @@ export default async function AdminSyncRunsPage() {
                 Nessun run registrato
               </h3>
               <p className="mt-2 text-sm leading-6 text-slate-500">
-                Il worker non ha ancora scritto eventi in <code>background_sync_runs</code>.
+                Nessun record corrisponde al filtro selezionato.
               </p>
             </div>
           )}
