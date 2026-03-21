@@ -105,6 +105,10 @@ export type AdminBackgroundSyncRun = {
 export type AdminBackgroundSyncRunPage = {
   items: AdminBackgroundSyncRun[];
   total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  latestRun: AdminBackgroundSyncRun | null;
   latestSuccessAt: string | null;
   nextEligibleSyncAt: string | null;
 };
@@ -115,6 +119,8 @@ export type AdminBackgroundSyncStatusFilter =
   | "success"
   | "skipped_interval"
   | "failed";
+
+export type AdminBackgroundSyncDateFilter = "all" | "today" | "7d" | "30d";
 
 function getAdminRole(sessionClaims: SessionClaimsLike) {
   return (
@@ -648,13 +654,31 @@ export async function listLatestKnowledgeBaseEntries(params?: { limit?: number }
 
 export async function listAdminBackgroundSyncRuns(params?: {
   jobName?: string;
-  limit?: number;
+  page?: number;
+  pageSize?: number;
   status?: AdminBackgroundSyncStatusFilter;
+  dateRange?: AdminBackgroundSyncDateFilter;
 }): Promise<AdminBackgroundSyncRunPage> {
   const supabase = getSupabaseAdminClient();
-  const limit = Math.min(Math.max(params?.limit ?? 20, 1), 100);
+  const pageSize = Math.min(Math.max(params?.pageSize ?? 15, 1), 100);
+  const page = Math.max(params?.page ?? 1, 1);
+  const start = (page - 1) * pageSize;
+  const end = start + pageSize - 1;
   const jobName = params?.jobName?.trim() || "sync-giurisprudenza-ilcaso";
   const status = params?.status ?? "all";
+  const dateRange = params?.dateRange ?? "all";
+  const now = new Date();
+  let startDate: string | null = null;
+
+  if (dateRange === "today") {
+    startDate = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+    ).toISOString();
+  } else if (dateRange === "7d") {
+    startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  } else if (dateRange === "30d") {
+    startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  }
 
   let runsQuery = supabase
     .from("background_sync_runs")
@@ -664,14 +688,34 @@ export async function listAdminBackgroundSyncRuns(params?: {
     )
     .eq("job_name", jobName)
     .order("started_at", { ascending: false })
-    .limit(limit);
+    .range(start, end);
 
   if (status !== "all") {
     runsQuery = runsQuery.eq("status", status);
   }
 
-  const [runsResponse, latestSuccessResponse] = await Promise.all([
+  if (startDate) {
+    runsQuery = runsQuery.gte("started_at", startDate);
+  }
+
+  let latestRunQuery = supabase
+    .from("background_sync_runs")
+    .select(
+      "id, job_name, status, started_at, finished_at, inserted_count, skipped_count, failed_count, metadata"
+    )
+    .eq("job_name", jobName)
+    .order("started_at", { ascending: false })
+    .limit(1);
+
+  if (startDate) {
+    latestRunQuery = latestRunQuery.gte("started_at", startDate);
+  }
+
+  const latestRunPromise = latestRunQuery.maybeSingle();
+
+  const [runsResponse, latestRunResponse, latestSuccessResponse] = await Promise.all([
     runsQuery,
+    latestRunPromise,
     supabase
       .from("background_sync_runs")
       .select("finished_at")
@@ -695,6 +739,12 @@ export async function listAdminBackgroundSyncRuns(params?: {
     );
   }
 
+  if (latestRunResponse.error) {
+    throw new Error(
+      `Lettura ultimo run fallita: ${latestRunResponse.error.message}`
+    );
+  }
+
   const latestSuccessAt = latestSuccessResponse.data?.finished_at ?? null;
   const nextEligibleSyncAt = latestSuccessAt
     ? new Date(
@@ -705,6 +755,10 @@ export async function listAdminBackgroundSyncRuns(params?: {
   return {
     items: (runsResponse.data ?? []) as AdminBackgroundSyncRun[],
     total: runsResponse.count ?? 0,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil((runsResponse.count ?? 0) / pageSize)),
+    latestRun: (latestRunResponse.data as AdminBackgroundSyncRun | null) ?? null,
     latestSuccessAt,
     nextEligibleSyncAt,
   };

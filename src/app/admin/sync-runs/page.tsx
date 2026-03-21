@@ -23,6 +23,7 @@ import {
 import {
   listAdminBackgroundSyncRuns,
   requireAdminAccess,
+  type AdminBackgroundSyncDateFilter,
   type AdminBackgroundSyncStatusFilter,
 } from "@/lib/admin";
 
@@ -37,6 +38,15 @@ const STATUS_OPTIONS: Array<{
   { value: "failed", label: "Failed" },
   { value: "running", label: "Running" },
 ];
+const DATE_RANGE_OPTIONS: Array<{
+  value: AdminBackgroundSyncDateFilter;
+  label: string;
+}> = [
+  { value: "all", label: "Tutto lo storico" },
+  { value: "today", label: "Oggi" },
+  { value: "7d", label: "Ultimi 7 giorni" },
+  { value: "30d", label: "Ultimi 30 giorni" },
+];
 
 function formatDateTime(value: string | null) {
   if (!value) {
@@ -49,12 +59,39 @@ function formatDateTime(value: string | null) {
   }).format(new Date(value));
 }
 
-function buildSyncRunsHref(status: AdminBackgroundSyncStatusFilter) {
-  if (status === "all") {
-    return "/admin/sync-runs";
+function buildSyncRunsHref(params: {
+  status: AdminBackgroundSyncStatusFilter;
+  range: AdminBackgroundSyncDateFilter;
+  page: number;
+}) {
+  const searchParams = new URLSearchParams();
+
+  if (params.status !== "all") {
+    searchParams.set("status", params.status);
   }
 
-  return `/admin/sync-runs?status=${status}`;
+  if (params.range !== "all") {
+    searchParams.set("range", params.range);
+  }
+
+  if (params.page > 1) {
+    searchParams.set("page", String(params.page));
+  }
+
+  const query = searchParams.toString();
+  return query ? `/admin/sync-runs?${query}` : "/admin/sync-runs";
+}
+
+function getVisiblePageNumbers(currentPage: number, totalPages: number) {
+  const pages = new Set<number>([1, totalPages]);
+
+  for (let page = currentPage - 2; page <= currentPage + 2; page += 1) {
+    if (page >= 1 && page <= totalPages) {
+      pages.add(page);
+    }
+  }
+
+  return [...pages].sort((left, right) => left - right);
 }
 
 function getStatusBadge(status: string) {
@@ -95,6 +132,8 @@ export default async function AdminSyncRunsPage({
 }: {
   searchParams: Promise<{
     status?: string;
+    range?: string;
+    page?: string;
   }>;
 }) {
   await requireAdminAccess();
@@ -107,14 +146,24 @@ export default async function AdminSyncRunsPage({
     params.status === "running"
       ? params.status
       : "all";
+  const range =
+    params.range === "today" ||
+    params.range === "7d" ||
+    params.range === "30d"
+      ? params.range
+      : "all";
+  const requestedPage = Number(params.page ?? "1");
+  const page = Number.isFinite(requestedPage) ? Math.max(1, requestedPage) : 1;
 
   const runPage = await listAdminBackgroundSyncRuns({
     jobName: JOB_NAME,
-    limit: 30,
+    page,
+    pageSize: 10,
     status,
+    dateRange: range,
   });
   const runs = runPage.items;
-  const latestRun = runs[0] ?? null;
+  const latestRun = runPage.latestRun;
   const totalInserted = runs.reduce(
     (sum, run) => sum + Number(run.inserted_count ?? 0),
     0
@@ -126,7 +175,21 @@ export default async function AdminSyncRunsPage({
   const totalSkipped = runs.filter(
     (run) => run.status === "skipped_interval"
   ).length;
-  const activeBadges = status !== "all" ? [`Stato: ${STATUS_OPTIONS.find((option) => option.value === status)?.label ?? status}`] : [];
+  const activeBadges = [
+    status !== "all"
+      ? `Stato: ${STATUS_OPTIONS.find((option) => option.value === status)?.label ?? status}`
+      : null,
+    range !== "all"
+      ? `Periodo: ${DATE_RANGE_OPTIONS.find((option) => option.value === range)?.label ?? range}`
+      : null,
+  ].filter((item): item is string => Boolean(item));
+  const rangeStart =
+    runPage.total === 0 ? 0 : (runPage.page - 1) * runPage.pageSize + 1;
+  const rangeEnd =
+    runPage.total === 0
+      ? 0
+      : Math.min(runPage.page * runPage.pageSize, runPage.total);
+  const visiblePages = getVisiblePageNumbers(runPage.page, runPage.totalPages);
 
   return (
     <div className="space-y-8">
@@ -149,7 +212,7 @@ export default async function AdminSyncRunsPage({
           <Card className="border-slate-200 shadow-sm">
             <CardContent className="p-5">
               <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
-                Ultimo stato
+                Ultimo stato globale
               </p>
               <div className="mt-3">
                 {latestRun ? getStatusBadge(latestRun.status) : "Nessun run"}
@@ -183,7 +246,7 @@ export default async function AdminSyncRunsPage({
                 {totalInserted}
               </p>
               <p className="mt-2 text-sm text-slate-500">
-                Somma dei record aggiunti nei run visibili
+                Somma dei record visibili in pagina
               </p>
             </CardContent>
           </Card>
@@ -196,7 +259,7 @@ export default async function AdminSyncRunsPage({
                 {totalSkipped} / {totalFailed}
               </p>
               <p className="mt-2 text-sm text-slate-500">
-                Skip per intervallo / singoli errori batch
+                Skip per intervallo / errori batch in pagina
               </p>
             </CardContent>
           </Card>
@@ -223,11 +286,17 @@ export default async function AdminSyncRunsPage({
       <Card className="border-slate-200 shadow-sm">
         <CardHeader className="border-b border-slate-100 bg-slate-50/70">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <CardTitle className="flex items-center gap-2 text-xl text-slate-950">
-              <Activity className="h-5 w-5 text-emerald-700" />
-              Storico run {JOB_NAME}
-            </CardTitle>
-            <form className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-xl text-slate-950">
+                <Activity className="h-5 w-5 text-emerald-700" />
+                Storico run {JOB_NAME}
+              </CardTitle>
+              <p className="mt-2 text-sm text-slate-500">
+                {rangeStart}-{rangeEnd} di {runPage.total} risultati · Pagina{" "}
+                {runPage.page} / {runPage.totalPages}
+              </p>
+            </div>
+            <form className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
               <label className="space-y-2 text-sm text-slate-600">
                 <span className="font-medium text-slate-700">Filtro stato</span>
                 <select
@@ -236,6 +305,20 @@ export default async function AdminSyncRunsPage({
                   className="h-10 min-w-52 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-emerald-400"
                 >
                   {STATUS_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-2 text-sm text-slate-600">
+                <span className="font-medium text-slate-700">Intervallo</span>
+                <select
+                  name="range"
+                  defaultValue={range}
+                  className="h-10 min-w-52 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-emerald-400"
+                >
+                  {DATE_RANGE_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
@@ -372,12 +455,94 @@ export default async function AdminSyncRunsPage({
                 Nessun run registrato
               </h3>
               <p className="mt-2 text-sm leading-6 text-slate-500">
-                Nessun record corrisponde al filtro selezionato.
+                Nessun record corrisponde ai filtri selezionati.
               </p>
             </div>
           )}
         </CardContent>
       </Card>
+
+      {runPage.totalPages > 1 ? (
+        <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-slate-500">
+            Navigazione storico run
+          </p>
+          <div className="flex items-center gap-3">
+            {runPage.page > 1 ? (
+              <Link
+                href={buildSyncRunsHref({
+                  status,
+                  range,
+                  page: runPage.page - 1,
+                })}
+              >
+                <Button variant="outline" className="border-slate-200">
+                  Precedente
+                </Button>
+              </Link>
+            ) : (
+              <Button variant="outline" className="border-slate-200" disabled>
+                Precedente
+              </Button>
+            )}
+            <div className="flex items-center gap-2">
+              {visiblePages.map((pageNumber, index) => {
+                const previous = visiblePages[index - 1];
+                const showGap =
+                  typeof previous === "number" && pageNumber - previous > 1;
+
+                return (
+                  <div key={pageNumber} className="flex items-center gap-2">
+                    {showGap ? (
+                      <span className="text-sm text-slate-400">...</span>
+                    ) : null}
+                    {pageNumber === runPage.page ? (
+                      <span className="inline-flex h-9 min-w-9 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-sm font-semibold text-emerald-800">
+                        {pageNumber}
+                      </span>
+                    ) : (
+                      <Link
+                        href={buildSyncRunsHref({
+                          status,
+                          range,
+                          page: pageNumber,
+                        })}
+                      >
+                        <Button
+                          variant="outline"
+                          className="min-w-9 border-slate-200"
+                        >
+                          {pageNumber}
+                        </Button>
+                      </Link>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <span className="text-sm font-medium text-slate-700">
+              Pagina {runPage.page} di {runPage.totalPages}
+            </span>
+            {runPage.page < runPage.totalPages ? (
+              <Link
+                href={buildSyncRunsHref({
+                  status,
+                  range,
+                  page: runPage.page + 1,
+                })}
+              >
+                <Button variant="outline" className="border-slate-200">
+                  Successiva
+                </Button>
+              </Link>
+            ) : (
+              <Button variant="outline" className="border-slate-200" disabled>
+                Successiva
+              </Button>
+            )}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
