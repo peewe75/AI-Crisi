@@ -1,6 +1,6 @@
 ﻿import Link from "next/link";
 import { UserButton } from "@clerk/nextjs";
-import { Database, FolderKanban, Shield } from "lucide-react";
+import { Database, FolderKanban, RefreshCw, Shield } from "lucide-react";
 import { requireAdminAccess } from "@/lib/admin";
 
 const NAV_ITEMS = [
@@ -13,6 +13,11 @@ const NAV_ITEMS = [
     href: "/admin/knowledge-base",
     label: "Knowledge Base",
     icon: Database,
+  },
+  {
+    href: "/admin/sync-runs",
+    label: "Sync Giurisprudenza",
+    icon: RefreshCw,
   },
 ] as const;
 

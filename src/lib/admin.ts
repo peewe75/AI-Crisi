@@ -82,6 +82,33 @@ export type AdminKnowledgeBaseItem = {
   } | null;
 };
 
+export type AdminBackgroundSyncRun = {
+  id: string;
+  job_name: string;
+  status: "running" | "success" | "skipped_interval" | "failed";
+  started_at: string;
+  finished_at: string | null;
+  inserted_count: number;
+  skipped_count: number;
+  failed_count: number;
+  metadata: {
+    source_url?: string | null;
+    fetched_count?: number | null;
+    pending_count?: number | null;
+    last_successful_sync_at?: string | null;
+    next_eligible_sync_at?: string | null;
+    reason?: string | null;
+    error?: string | null;
+  } | null;
+};
+
+export type AdminBackgroundSyncRunPage = {
+  items: AdminBackgroundSyncRun[];
+  total: number;
+  latestSuccessAt: string | null;
+  nextEligibleSyncAt: string | null;
+};
+
 function getAdminRole(sessionClaims: SessionClaimsLike) {
   return (
     sessionClaims?.metadata?.role ??
@@ -610,5 +637,61 @@ export async function listLatestKnowledgeBaseEntries(params?: { limit?: number }
   }
 
   return (data ?? []) as AdminKnowledgeBaseItem[];
+}
+
+export async function listAdminBackgroundSyncRuns(params?: {
+  jobName?: string;
+  limit?: number;
+}): Promise<AdminBackgroundSyncRunPage> {
+  const supabase = getSupabaseAdminClient();
+  const limit = Math.min(Math.max(params?.limit ?? 20, 1), 100);
+  const jobName = params?.jobName?.trim() || "sync-giurisprudenza-ilcaso";
+
+  const [runsResponse, latestSuccessResponse] = await Promise.all([
+    supabase
+      .from("background_sync_runs")
+      .select(
+        "id, job_name, status, started_at, finished_at, inserted_count, skipped_count, failed_count, metadata",
+        { count: "exact" }
+      )
+      .eq("job_name", jobName)
+      .order("started_at", { ascending: false })
+      .limit(limit),
+    supabase
+      .from("background_sync_runs")
+      .select("finished_at")
+      .eq("job_name", jobName)
+      .eq("status", "success")
+      .not("finished_at", "is", null)
+      .order("finished_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  if (runsResponse.error) {
+    throw new Error(
+      `Lettura run di sincronizzazione fallita: ${runsResponse.error.message}`
+    );
+  }
+
+  if (latestSuccessResponse.error) {
+    throw new Error(
+      `Lettura ultimo run riuscito fallita: ${latestSuccessResponse.error.message}`
+    );
+  }
+
+  const latestSuccessAt = latestSuccessResponse.data?.finished_at ?? null;
+  const nextEligibleSyncAt = latestSuccessAt
+    ? new Date(
+        new Date(latestSuccessAt).getTime() + 48 * 60 * 60 * 1000
+      ).toISOString()
+    : null;
+
+  return {
+    items: (runsResponse.data ?? []) as AdminBackgroundSyncRun[],
+    total: runsResponse.count ?? 0,
+    latestSuccessAt,
+    nextEligibleSyncAt,
+  };
 }
 
