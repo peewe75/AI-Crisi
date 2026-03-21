@@ -2,7 +2,6 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FileRejection, useDropzone } from "react-dropzone";
 import { FileText, Loader2, Square, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -53,6 +52,7 @@ export default function KnowledgeBaseUploadForm() {
   const [documents, setDocuments] = useState<UploadDocument[]>([]);
   const [result, setResult] = useState<IngestResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isDragActive, setIsDragActive] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -93,8 +93,7 @@ export default function KnowledgeBaseUploadForm() {
 
   function handleFileSelection(event: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
-    setError(null);
-    void loadFiles(files);
+    void handleIncomingFiles(files);
     event.target.value = "";
   }
 
@@ -105,35 +104,59 @@ export default function KnowledgeBaseUploadForm() {
     );
 
     if (!isAllowed) {
-      return {
-        code: "file-invalid-type",
-        message: `Formato non supportato per ${file.name}. Usa file .md, .markdown o .txt.`,
-      };
+      return `Formato non supportato per ${file.name}. Usa file .md, .markdown o .txt.`;
     }
 
     return null;
   }
 
-  const { getRootProps, isDragActive } = useDropzone({
-    multiple: true,
-    noClick: true,
-    disabled: isSubmitting,
-    accept: {
-      "text/plain": ALLOWED_FILE_EXTENSIONS,
-    },
-    validator: validateFile,
-    onDrop: (acceptedFiles) => {
+  async function handleIncomingFiles(files: File[]) {
+    if (isSubmitting) {
+      return;
+    }
+
+    const allowedFiles: File[] = [];
+    let firstError: string | null = null;
+
+    for (const file of files) {
+      const validationError = validateFile(file);
+
+      if (validationError) {
+        firstError ??= validationError;
+        continue;
+      }
+
+      allowedFiles.push(file);
+    }
+
+    if (firstError) {
+      setError(firstError);
+    } else {
       setError(null);
-      void loadFiles(acceptedFiles);
-    },
-    onDropRejected: (rejections: FileRejection[]) => {
-      const firstMessage = rejections[0]?.errors[0]?.message;
-      setError(
-        firstMessage ??
-          "Uno o piu file non sono supportati. Usa solo .md, .markdown o .txt."
-      );
-    },
-  });
+    }
+
+    await loadFiles(allowedFiles);
+  }
+
+  function handleDragOver(event: React.DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+
+    if (!isSubmitting) {
+      setIsDragActive(true);
+    }
+  }
+
+  function handleDragLeave(event: React.DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    setIsDragActive(false);
+  }
+
+  function handleDrop(event: React.DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    setIsDragActive(false);
+
+    void handleIncomingFiles(Array.from(event.dataTransfer.files ?? []));
+  }
 
   function removeDocument(filename: string, size: number) {
     setDocuments((currentDocuments) =>
@@ -383,7 +406,10 @@ export default function KnowledgeBaseUploadForm() {
                     onChange={handleFileSelection}
                   />
                   <div
-                    {...getRootProps()}
+                    onDragOver={handleDragOver}
+                    onDragEnter={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
                     className={`flex flex-col items-center justify-center gap-3 rounded-2xl border px-6 py-12 text-center transition ${
                       isDragActive
                         ? "border-emerald-400 bg-emerald-50"
