@@ -1,9 +1,18 @@
-﻿import KnowledgeBaseUploadForm from "@/components/admin/KnowledgeBaseUploadForm";
+import KnowledgeBaseUploadForm from "@/components/admin/KnowledgeBaseUploadForm";
 import KnowledgeBaseCategoryOverview from "@/components/admin/KnowledgeBaseCategoryOverview";
 import { requireAdminAccess } from "@/lib/admin";
 
-export default async function AdminKnowledgeBasePage() {
+export default async function AdminKnowledgeBasePage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    kbSearch?: string;
+  }>;
+}) {
   await requireAdminAccess();
+
+  const params = await searchParams;
+  const kbSearch = typeof params.kbSearch === "string" ? params.kbSearch : "";
 
   return (
     <div className="space-y-8">
@@ -16,16 +25,15 @@ export default async function AdminKnowledgeBasePage() {
         </h2>
         <p className="max-w-3xl text-sm leading-6 text-slate-600">
           Carica normativa, giurisprudenza, template e skill nel Vector DB.
-          L'ingestione avviene lato server con chiave service role e genera gli
+          L&apos;ingestione avviene lato server con chiave service role e genera gli
           embedding compatibili con la pipeline RAG gia attiva.
         </p>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.25fr_0.95fr]">
         <KnowledgeBaseUploadForm />
-        <KnowledgeBaseCategoryOverview />
+        <KnowledgeBaseCategoryOverview search={kbSearch} />
       </div>
     </div>
   );
 }
-

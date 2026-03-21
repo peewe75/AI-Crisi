@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { FileRejection, useDropzone } from "react-dropzone";
 import { FileText, Loader2, Upload, X } from "lucide-react";
@@ -45,6 +45,7 @@ async function readFileWithEncodingFallback(file: File) {
 
 export default function KnowledgeBaseUploadForm() {
   const router = useRouter();
+  const directoryInputRef = useRef<HTMLInputElement | null>(null);
   const [markdownText, setMarkdownText] = useState("");
   const [category, setCategory] =
     useState<(typeof CATEGORY_OPTIONS)[number]>("Giurisprudenza");
@@ -88,6 +89,13 @@ export default function KnowledgeBaseUploadForm() {
 
       return nextDocuments;
     });
+  }
+
+  function handleDirectorySelection(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+    setError(null);
+    void loadFiles(files);
+    event.target.value = "";
   }
 
   function validateFile(file: File) {
@@ -285,6 +293,18 @@ export default function KnowledgeBaseUploadForm() {
                   File Markdown o testo
                 </span>
                 <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6">
+                  <input
+                    ref={directoryInputRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    accept={ALLOWED_FILE_EXTENSIONS.join(",")}
+                    onChange={handleDirectorySelection}
+                    {...({
+                      webkitdirectory: "",
+                      directory: "",
+                    } as Record<string, string>)}
+                  />
                   <div
                     {...getRootProps()}
                     className={`flex cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border px-6 py-12 text-center transition ${
@@ -318,6 +338,18 @@ export default function KnowledgeBaseUploadForm() {
                       }}
                     >
                       Sfoglia file
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="border-slate-200"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        directoryInputRef.current?.click();
+                      }}
+                    >
+                      Sfoglia cartella
                     </Button>
                   </div>
                 </div>

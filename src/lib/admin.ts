@@ -82,6 +82,15 @@ export type AdminKnowledgeBaseItem = {
   } | null;
 };
 
+export type KnowledgeBaseArchiveCategory = "Giurisprudenza" | "Normativa" | "Template" | "Skill";
+
+export type AdminKnowledgeBaseArchive = {
+  items: AdminKnowledgeBaseItem[];
+  total: number;
+  search: string;
+  countsByCategory: Record<KnowledgeBaseArchiveCategory, number>;
+};
+
 export type AdminBackgroundSyncRun = {
   id: string;
   job_name: string;
@@ -635,21 +644,84 @@ export async function getAdminPracticeDetail(practiceId: string) {
   } as AdminPracticeDetail;
 }
 
-export async function listLatestKnowledgeBaseEntries(params?: { limit?: number }) {
+export async function listLatestKnowledgeBaseEntries(params?: {
+  limit?: number;
+  search?: string;
+}): Promise<AdminKnowledgeBaseArchive> {
   const supabase = getSupabaseAdminClient();
   const limit = Math.min(Math.max(params?.limit ?? 10, 1), 50);
+  const search = params?.search?.trim() ?? "";
+  const searchPattern = `%${search}%`;
+  const categories: KnowledgeBaseArchiveCategory[] = [
+    "Giurisprudenza",
+    "Normativa",
+    "Template",
+    "Skill",
+  ];
 
-  const { data, error } = await supabase
+  let itemsQuery = supabase
     .from("knowledge_base")
-    .select("id, title, category, created_at, metadata")
+    .select("id, title, category, created_at, metadata", { count: "exact" })
     .order("created_at", { ascending: false })
     .limit(limit);
+
+  if (search) {
+    itemsQuery = itemsQuery.or(
+      `title.ilike.${searchPattern},content.ilike.${searchPattern}`
+    );
+  }
+
+  const countQueries = categories.map((category) => {
+    let query = supabase
+      .from("knowledge_base")
+      .select("id", { count: "exact", head: true })
+      .eq("category", category);
+
+    if (search) {
+      query = query.or(`title.ilike.${searchPattern},content.ilike.${searchPattern}`);
+    }
+
+    return query;
+  });
+
+  const [itemsResponse, ...countResponses] = await Promise.all([
+    itemsQuery,
+    ...countQueries,
+  ]);
+
+  const { data, error, count } = itemsResponse;
 
   if (error) {
     throw new Error(`Lettura knowledge base admin fallita: ${error.message}`);
   }
 
-  return (data ?? []) as AdminKnowledgeBaseItem[];
+  const countsByCategory = categories.reduce(
+    (accumulator, category, index) => {
+      const response = countResponses[index];
+
+      if (response.error) {
+        throw new Error(
+          `Conteggio knowledge base per categoria fallito: ${response.error.message}`
+        );
+      }
+
+      accumulator[category] = response.count ?? 0;
+      return accumulator;
+    },
+    {
+      Giurisprudenza: 0,
+      Normativa: 0,
+      Template: 0,
+      Skill: 0,
+    } satisfies Record<KnowledgeBaseArchiveCategory, number>
+  );
+
+  return {
+    items: (data ?? []) as AdminKnowledgeBaseItem[],
+    total: count ?? 0,
+    search,
+    countsByCategory,
+  };
 }
 
 export async function listAdminBackgroundSyncRuns(params?: {
