@@ -66,6 +66,7 @@ export default async function PracticeWorkshopPage({
       <DocumentWorkshop
         practiceId={practice.id}
         practiceLabel={`${practice.type} · ${practice.status}`}
+        practiceType={practice.type}
         companyName={practice.client.company_name}
         missingCategories={missingCategories}
         availableDocumentCount={availableDocumentCount}

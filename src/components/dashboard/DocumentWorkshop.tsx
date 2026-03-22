@@ -32,10 +32,10 @@ import {
 } from "@/components/ui/table";
 import {
   createGeneratedActFilename,
-  DOCUMENT_GENERATION_OPTIONS,
-  getDocumentGenerationOption,
-  isDocumentGenerationType,
-  type DocumentGenerationType,
+  getAnyDocumentGenerationOption,
+  getDocumentOptionsForPractice,
+  isAnyDocumentGenerationType,
+  type AnyDocumentGenerationType,
 } from "@/lib/ai/officina";
 import { cn } from "@/lib/utils";
 import type { PracticeGeneratedActRecord } from "@/lib/practices";
@@ -43,6 +43,7 @@ import type { PracticeGeneratedActRecord } from "@/lib/practices";
 type DocumentWorkshopProps = {
   practiceId: string;
   practiceLabel: string;
+  practiceType: string;
   companyName: string;
   missingCategories: string[];
   availableDocumentCount: number;
@@ -50,7 +51,7 @@ type DocumentWorkshopProps = {
 };
 
 type DraftState = {
-  documentType: DocumentGenerationType;
+  documentType: AnyDocumentGenerationType;
   content: string;
   generatedAt: string;
 };
@@ -60,7 +61,7 @@ type FeedbackState = {
   text: string;
 } | null;
 
-const iconByType: Record<DocumentGenerationType, typeof Sparkles> = {
+const iconByType: Record<string, typeof Sparkles> = {
   Parere_Strategico: Sparkles,
   Parere_Creditori_Erario: Landmark,
   Ricorso_Misure_Protettive: Scale,
@@ -69,6 +70,15 @@ const iconByType: Record<DocumentGenerationType, typeof Sparkles> = {
   Piano_Risanamento_Operativo: TrendingUp,
   Lettera_Creditori_Strategici: MessagesSquare,
   Verbale_Avanzamento_Trattative: FileText,
+  // Sovraindebitamento
+  Parere_Strategico_Sovraindebitamento: Sparkles,
+  Ricorso_Piano_Consumatore: Scale,
+  Ricorso_Concordato_Minore: Scale,
+  Domanda_Liquidazione_Controllata: ClipboardList,
+  Istanza_Misure_Protettive_Sovraindebitamento: ShieldCheck,
+  Istanza_Nomina_OCC: Landmark,
+  Memoria_Integrativa_Sovraindebitamento: ClipboardList,
+  Ricorso_Esdebitazione_Incapiente: TrendingUp,
 };
 
 const markdownComponents = {
@@ -122,7 +132,7 @@ function formatDateTime(value: string | null) {
 
 function getNextVersion(
   acts: PracticeGeneratedActRecord[],
-  documentType: DocumentGenerationType
+  documentType: AnyDocumentGenerationType
 ) {
   return (
     acts
@@ -205,13 +215,17 @@ async function downloadFromResponse(response: Response) {
 export default function DocumentWorkshop({
   practiceId,
   practiceLabel,
+  practiceType,
   companyName,
   missingCategories,
   availableDocumentCount,
   initialActs,
 }: DocumentWorkshopProps) {
+  const documentOptions = getDocumentOptionsForPractice(practiceType);
+  const defaultType = documentOptions[0].value as AnyDocumentGenerationType;
+
   const [selectedType, setSelectedType] =
-    useState<DocumentGenerationType>("Parere_Strategico");
+    useState<AnyDocumentGenerationType>(defaultType);
   const [savedActs, setSavedActs] = useState<PracticeGeneratedActRecord[]>(
     sortActs(initialActs)
   );
@@ -267,7 +281,7 @@ export default function DocumentWorkshop({
   }, [savedActs, selectedSavedActId]);
 
   const selectedOption = useMemo(
-    () => getDocumentGenerationOption(selectedType),
+    () => getAnyDocumentGenerationOption(selectedType),
     [selectedType]
   );
 
@@ -298,12 +312,12 @@ export default function DocumentWorkshop({
   const displayedTitle = selectedSavedAct
     ? selectedSavedAct.title
     : draft
-      ? `${getDocumentGenerationOption(draftType).title} · bozza non salvata`
+      ? `${getAnyDocumentGenerationOption(draftType).title} · bozza non salvata`
       : selectedOption.title;
   const displayedContent = selectedSavedAct?.content_markdown ?? draftContent;
   const nextDraftVersion = getNextVersion(savedActs, draftType);
 
-  async function handleGenerate(documentType: DocumentGenerationType) {
+  async function handleGenerate(documentType: AnyDocumentGenerationType) {
     setFeedback(null);
     setSelectedType(documentType);
     setSelectedSavedActId(null);
@@ -352,7 +366,7 @@ export default function DocumentWorkshop({
       );
       setSelectedSavedActId(payload.act.id);
 
-      if (isDocumentGenerationType(payload.act.document_type)) {
+      if (isAnyDocumentGenerationType(payload.act.document_type)) {
         setSelectedType(payload.act.document_type);
       }
 
@@ -493,7 +507,7 @@ export default function DocumentWorkshop({
         },
         body: JSON.stringify({
           markdown: draft.content,
-          title: `${getDocumentGenerationOption(draft.documentType).title} · ${companyName}`,
+          title: `${getAnyDocumentGenerationOption(draft.documentType).title} · ${companyName}`,
           companyName,
           documentType: draft.documentType,
           version: nextDraftVersion,
@@ -516,7 +530,7 @@ export default function DocumentWorkshop({
   function handleSelectSavedAct(act: PracticeGeneratedActRecord) {
     setSelectedSavedActId(act.id);
 
-    if (isDocumentGenerationType(act.document_type)) {
+    if (isAnyDocumentGenerationType(act.document_type)) {
       setSelectedType(act.document_type);
     }
   }
@@ -561,8 +575,8 @@ export default function DocumentWorkshop({
             </div>
 
             <div className="space-y-3">
-              {DOCUMENT_GENERATION_OPTIONS.map((option) => {
-                const Icon = iconByType[option.value];
+              {documentOptions.map((option) => {
+                const Icon = iconByType[option.value] ?? FileText;
                 const isSelected = selectedType === option.value;
                 const savedCount = savedActs.filter(
                   (act) =>
@@ -573,7 +587,7 @@ export default function DocumentWorkshop({
                   <button
                     key={option.value}
                     type="button"
-                    onClick={() => handleGenerate(option.value)}
+                    onClick={() => handleGenerate(option.value as AnyDocumentGenerationType)}
                     disabled={isLoading}
                     className={cn(
                       "w-full rounded-2xl border p-4 text-left transition",
@@ -810,7 +824,7 @@ export default function DocumentWorkshop({
                 <article className="mx-auto max-w-4xl space-y-5 text-[15px] leading-7 text-slate-800">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="outline">
-                      {getDocumentGenerationOption(draftType).title}
+                      {getAnyDocumentGenerationOption(draftType).title}
                     </Badge>
                     {selectedSavedAct ? (
                       <>
@@ -911,8 +925,8 @@ export default function DocumentWorkshop({
                               {act.title}
                             </p>
                             <p className="mt-1 text-xs text-slate-500">
-                              {isDocumentGenerationType(act.document_type)
-                                ? getDocumentGenerationOption(act.document_type)
+                              {isAnyDocumentGenerationType(act.document_type)
+                                ? getAnyDocumentGenerationOption(act.document_type)
                                     .subtitle
                                 : act.document_type}
                             </p>
@@ -1054,5 +1068,3 @@ export default function DocumentWorkshop({
     </div>
   );
 }
-
-

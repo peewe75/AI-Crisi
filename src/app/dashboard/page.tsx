@@ -6,6 +6,7 @@ import { isCurrentUserAdmin } from "@/lib/admin";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Plus, Folder } from "lucide-react";
+import { getPracticeArea } from "@/lib/practices";
 
 export default async function DashboardPage() {
   // Con la nuova API server component Clerk in Next.js App Router (v7)
@@ -40,7 +41,7 @@ export default async function DashboardPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">Le mie Pratiche</h1>
-          <p className="text-sm text-slate-500">Gestisci i fascicoli e le procedure di Crisi d'Impresa.</p>
+          <p className="text-sm text-slate-500">Gestisci i fascicoli e le procedure di Crisi d&apos;Impresa e Sovraindebitamento.</p>
         </div>
         <Link href="/dashboard/pratiche/nuova">
           <Button className="bg-blue-900 hover:bg-blue-800 text-white w-full sm:w-auto">
@@ -70,9 +71,23 @@ export default async function DashboardPage() {
           {practices.map((practice: any) => (
             <Card key={practice.id} className="border-slate-200 transition-shadow hover:shadow-md">
               <CardHeader className="pb-3">
-                <CardTitle className="text-lg font-semibold text-slate-800 line-clamp-1">
-                  {practice.clients?.company_name || 'Azienda Sconosciuta'}
-                </CardTitle>
+                <div className="flex items-start justify-between gap-2">
+                  <CardTitle className="text-lg font-semibold text-slate-800 line-clamp-1">
+                    {practice.clients?.company_name || 'Azienda Sconosciuta'}
+                  </CardTitle>
+                  {(() => {
+                    const area = getPracticeArea(practice.type);
+                    return (
+                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${
+                        area === "Sovraindebitamento"
+                          ? "bg-amber-100 text-amber-700"
+                          : "bg-blue-100 text-blue-700"
+                      }`}>
+                        {area === "Sovraindebitamento" ? "Sovraindebitamento" : "Crisi Aziendale"}
+                      </span>
+                    );
+                  })()}
+                </div>
                 <CardDescription className="text-sm">
                   {practice.type}
                 </CardDescription>

@@ -1,5 +1,39 @@
 import { createClerkSupabaseClient } from "@/lib/supabase/client";
 
+export const PRACTICE_AREAS = ["Crisi Aziendale", "Sovraindebitamento"] as const;
+export type PracticeArea = (typeof PRACTICE_AREAS)[number];
+
+export const CRISI_AZIENDALE_PROCEDURE_TYPES = [
+  "Composizione Negoziata",
+  "Concordato Preventivo",
+  "Accordi di Ristrutturazione",
+  "Piano di Ristrutturazione Soggetto a Omologazione",
+  "Liquidazione Giudiziale",
+] as const;
+
+export const SOVRAINDEBITAMENTO_PROCEDURE_TYPES = [
+  "Piano Consumatore",
+  "Concordato Minore",
+  "Liquidazione Controllata",
+  "Esdebitazione Incapiente",
+] as const;
+
+export type CrisiAziendaleProcedureType =
+  (typeof CRISI_AZIENDALE_PROCEDURE_TYPES)[number];
+export type SovraindebitamentoProcedureType =
+  (typeof SOVRAINDEBITAMENTO_PROCEDURE_TYPES)[number];
+
+export function getPracticeArea(practiceType: string): PracticeArea {
+  if (
+    SOVRAINDEBITAMENTO_PROCEDURE_TYPES.includes(
+      practiceType as SovraindebitamentoProcedureType
+    )
+  ) {
+    return "Sovraindebitamento";
+  }
+  return "Crisi Aziendale";
+}
+
 export const PRACTICE_DOCUMENT_CATEGORIES = [
   "Societaria",
   "Contabile",

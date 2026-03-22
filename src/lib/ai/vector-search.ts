@@ -22,6 +22,65 @@ function formatMetadata(metadata: Record<string, unknown> | null) {
     .join("\n");
 }
 
+export async function searchSovraindebitamentoKnowledgeBase(
+  query: string,
+  matchCount = 5,
+  procedureType?: string
+): Promise<{
+  aggregatedContext: string;
+  matches: KnowledgeBaseMatch[];
+}> {
+  const normalizedQuery = query.trim();
+
+  if (!normalizedQuery) {
+    return { aggregatedContext: "", matches: [] };
+  }
+
+  const embedding = await createKnowledgeBaseEmbedding({
+    value: normalizedQuery,
+    taskType: "RETRIEVAL_QUERY",
+  });
+
+  const supabase = getSupabaseAdminClient();
+  const { data, error } = await supabase.rpc(
+    "match_knowledge_base_sovraindebitamento",
+    {
+      query_embedding: embedding,
+      match_count: matchCount,
+      filter_procedure: procedureType ?? null,
+    }
+  );
+
+  if (error) {
+    throw new Error(
+      `Vector search sovraindebitamento fallita: ${error.message}`
+    );
+  }
+
+  const matches = ((data as KnowledgeBaseMatch[] | null) ?? []).filter(
+    (item) => typeof item?.content === "string" && item.content.trim().length > 0
+  );
+
+  const aggregatedContext = matches
+    .map((match, index) => {
+      return [
+        `Fonte ${index + 1}: ${match.title}`,
+        `Categoria: ${match.category}`,
+        `Similarita: ${match.similarity.toFixed(4)}`,
+        "Metadati:",
+        formatMetadata(match.metadata),
+        "Contenuto:",
+        match.content.trim(),
+      ].join("\n");
+    })
+    .join("\n\n---\n\n");
+
+  return {
+    aggregatedContext,
+    matches,
+  };
+}
+
 export async function searchKnowledgeBase(
   query: string,
   matchCount = 5

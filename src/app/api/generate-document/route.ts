@@ -3,10 +3,14 @@ import { google } from "@ai-sdk/google";
 import { streamText } from "ai";
 import { NextResponse } from "next/server";
 import {
-  getDocumentGenerationOption,
-  isDocumentGenerationType,
+  getAnyDocumentGenerationOption,
+  isAnyDocumentGenerationType,
+  isSovraindebitamentoPractice,
 } from "@/lib/ai/officina";
-import { searchKnowledgeBase } from "@/lib/ai/vector-search";
+import {
+  searchKnowledgeBase,
+  searchSovraindebitamentoKnowledgeBase,
+} from "@/lib/ai/vector-search";
 import {
   getMissingPracticeCategories,
   getPracticeForCurrentUser,
@@ -94,7 +98,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!isDocumentGenerationType(documentType)) {
+    if (!isAnyDocumentGenerationType(documentType)) {
       return NextResponse.json(
         { error: "Tipo di atto non supportato." },
         { status: 400 }
@@ -148,22 +152,42 @@ export async function POST(request: Request) {
     }
 
     const missingCategories = getMissingPracticeCategories(practice.documents);
-    const requestedDocument = getDocumentGenerationOption(documentType);
+    const isSovraindebitamento = isSovraindebitamentoPractice(practice.type);
+    const requestedDocument = getAnyDocumentGenerationOption(documentType as Parameters<typeof getAnyDocumentGenerationOption>[0]);
     const documentContext = buildDocumentContext(practice.documents);
-    const legalSources = await searchKnowledgeBase(
-      `${requestedDocument.title} per pratica ${practice.type} in materia di crisi d'impresa e CCII`
-    );
 
-    const systemPrompt = [
-      "Sei un avvocato Senior esperto in Crisi d'Impresa (CCII).",
-      "Redigi l'atto richiesto esclusivamente in italiano e in formato Markdown.",
-      "Usa i dati del cliente, i documenti interni e la giurisprudenza/normativa recuperata.",
-      "Mantieni tono formale, analitico e professionale.",
-      "Quando richiami norme o arresti giurisprudenziali, cita soltanto le fonti presenti nel contesto fornito.",
-      "Se il fascicolo presenta lacune documentali, evidenziale in un paragrafo finale denominato 'Cautele e integrazioni istruttorie'.",
-      "Non inventare fatti non presenti nel fascicolo.",
-      "Usa intestazioni Markdown coerenti con la struttura richiesta.",
-    ].join(" ");
+    const legalSources = isSovraindebitamento
+      ? await searchSovraindebitamentoKnowledgeBase(
+          `${requestedDocument.title} per pratica ${practice.type} in materia di sovraindebitamento e procedure minori CCII`,
+          5,
+          practice.type
+        )
+      : await searchKnowledgeBase(
+          `${requestedDocument.title} per pratica ${practice.type} in materia di crisi d'impresa e CCII`
+        );
+
+    const systemPrompt = isSovraindebitamento
+      ? [
+          "Sei un avvocato Senior esperto in procedure di sovraindebitamento (D.Lgs. n. 14/2019, CCII, Titolo IV-bis e segg.).",
+          "Redigi l'atto richiesto esclusivamente in italiano e in formato Markdown.",
+          "Il soggetto è un debitore NON FALLIBILE: consumatore, professionista, piccolo imprenditore o imprenditore agricolo.",
+          "Usa i dati del debitore, i documenti interni e la giurisprudenza/normativa recuperata dalla knowledge base sovraindebitamento.",
+          "Mantieni tono formale, analitico e professionale tipico dell'avvocato del debitore.",
+          "Quando richiami norme o arresti giurisprudenziali, cita soltanto le fonti presenti nel contesto fornito.",
+          "Se il fascicolo presenta lacune documentali (es. mancanza relazione OCC, elenco creditori), evidenziale in un paragrafo finale denominato 'Cautele e integrazioni istruttorie'.",
+          "Non inventare fatti non presenti nel fascicolo.",
+          "Usa intestazioni Markdown coerenti con la struttura richiesta.",
+        ].join(" ")
+      : [
+          "Sei un avvocato Senior esperto in Crisi d'Impresa (CCII).",
+          "Redigi l'atto richiesto esclusivamente in italiano e in formato Markdown.",
+          "Usa i dati del cliente, i documenti interni e la giurisprudenza/normativa recuperata.",
+          "Mantieni tono formale, analitico e professionale.",
+          "Quando richiami norme o arresti giurisprudenziali, cita soltanto le fonti presenti nel contesto fornito.",
+          "Se il fascicolo presenta lacune documentali, evidenziale in un paragrafo finale denominato 'Cautele e integrazioni istruttorie'.",
+          "Non inventare fatti non presenti nel fascicolo.",
+          "Usa intestazioni Markdown coerenti con la struttura richiesta.",
+        ].join(" ");
 
     const userPrompt = [
       `ATTO DA REDIGERE: ${requestedDocument.title}`,

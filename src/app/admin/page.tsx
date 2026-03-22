@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Eye, FolderKanban, ShieldCheck } from "lucide-react";
+import { BookOpen, Eye, FolderKanban, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -189,31 +189,57 @@ export default async function AdminOverviewPage({
           </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 sm:w-auto">
-          <Card className="border-slate-200 shadow-none">
-            <CardContent className="p-4">
-              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
-                Totale viste
-              </p>
-              <p className="mt-2 text-2xl font-semibold text-slate-950">
-                {practicePage.total}
-              </p>
-            </CardContent>
-          </Card>
-          <Card className="border-slate-200 shadow-none">
-            <CardContent className="p-4">
-              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
-                Aziende uniche
-              </p>
-              <p className="mt-2 text-2xl font-semibold text-slate-950">
-                {
-                  new Set(
-                    practicePage.items.map((practice) => practice.client?.id ?? practice.id)
-                  ).size
-                }
-              </p>
-            </CardContent>
-          </Card>
+        <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-2 gap-3 sm:w-auto">
+            <Card className="border-slate-200 shadow-none">
+              <CardContent className="p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                  Totale viste
+                </p>
+                <p className="mt-2 text-2xl font-semibold text-slate-950">
+                  {practicePage.total}
+                </p>
+              </CardContent>
+            </Card>
+            <Card className="border-slate-200 shadow-none">
+              <CardContent className="p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                  Aziende uniche
+                </p>
+                <p className="mt-2 text-2xl font-semibold text-slate-950">
+                  {
+                    new Set(
+                      practicePage.items.map((practice) => practice.client?.id ?? practice.id)
+                    ).size
+                  }
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:w-auto">
+            <Link href="/admin/knowledge-base">
+              <Card className="border-emerald-200 bg-emerald-50/50 shadow-none transition-colors hover:bg-emerald-50 cursor-pointer">
+                <CardContent className="flex items-center gap-3 p-4">
+                  <BookOpen className="h-5 w-5 shrink-0 text-emerald-700" />
+                  <div>
+                    <p className="text-xs font-semibold text-emerald-800">KB Crisi Aziendale</p>
+                    <p className="text-xs text-emerald-600">Carica documenti</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+            <Link href="/admin/kb-sovraindebitamento">
+              <Card className="border-amber-200 bg-amber-50/50 shadow-none transition-colors hover:bg-amber-50 cursor-pointer">
+                <CardContent className="flex items-center gap-3 p-4">
+                  <BookOpen className="h-5 w-5 shrink-0 text-amber-700" />
+                  <div>
+                    <p className="text-xs font-semibold text-amber-800">KB Sovraindebitamento</p>
+                    <p className="text-xs text-amber-600">Carica documenti</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+          </div>
         </div>
       </div>
 
