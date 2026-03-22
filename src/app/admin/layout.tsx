@@ -8,16 +8,25 @@ const NAV_ITEMS = [
     href: "/admin",
     label: "Tutte le Pratiche",
     icon: FolderKanban,
+    color: undefined,
   },
   {
     href: "/admin/knowledge-base",
-    label: "Knowledge Base",
+    label: "KB Crisi Aziendale",
     icon: Database,
+    color: undefined,
+  },
+  {
+    href: "/admin/kb-sovraindebitamento",
+    label: "KB Sovraindebitamento",
+    icon: Database,
+    color: "amber" as const,
   },
   {
     href: "/admin/sync-runs",
     label: "Sync Giurisprudenza",
     icon: RefreshCw,
+    color: undefined,
   },
 ] as const;
 
@@ -50,11 +59,16 @@ export default async function AdminLayout({
         <nav className="flex-1 space-y-2 p-4">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
+            const isAmber = item.color === "amber";
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className="flex items-center gap-3 rounded-2xl border border-transparent px-4 py-3 text-sm font-medium text-slate-700 transition hover:border-emerald-100 hover:bg-emerald-50 hover:text-emerald-900"
+                className={`flex items-center gap-3 rounded-2xl border border-transparent px-4 py-3 text-sm font-medium transition ${
+                  isAmber
+                    ? "text-amber-700 hover:border-amber-100 hover:bg-amber-50 hover:text-amber-900"
+                    : "text-slate-700 hover:border-emerald-100 hover:bg-emerald-50 hover:text-emerald-900"
+                }`}
               >
                 <Icon className="h-4 w-4" />
                 {item.label}
