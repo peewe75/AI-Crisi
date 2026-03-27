@@ -1,6 +1,6 @@
 import "server-only";
 
-import { PDFParse } from "pdf-parse";
+import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.js";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const STORAGE_BUCKET = "practice_documents";
@@ -19,19 +19,31 @@ export async function extractPdfTextFromBytes(bytes: Uint8Array) {
   }
 
   try {
-    const parser = new PDFParse({ data: bytes });
-    try {
-      const result = await parser.getText();
-      const text = normalizeExtractedText(result.text ?? "");
-      
-      if (!text || text.trim().length === 0) {
-        throw new Error("Nessun testo estraibile trovato nel PDF (potrebbe essere un'immagine o protetto).");
-      }
-      
-      return text;
-    } finally {
-      await parser.destroy();
+    const loadingTask = pdfjsLib.getDocument({
+      data: bytes,
+      useWorkerFetch: false,
+      isEvalSupported: false,
+      useSystemFonts: true,
+    });
+    const pdfDocument = await loadingTask.promise;
+    let fullText = "";
+
+    for (let i = 1; i <= pdfDocument.numPages; i++) {
+      const page = await pdfDocument.getPage(i);
+      const textContent = await page.getTextContent();
+      const pageText = textContent.items
+        .map((item: any) => item.str)
+        .join(" ");
+      fullText += pageText + "\n";
     }
+
+    const text = normalizeExtractedText(fullText);
+
+    if (!text || text.trim().length === 0) {
+      throw new Error("Nessun testo estraibile trovato nel PDF (potrebbe essere un'immagine o protetto).");
+    }
+
+    return text;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Errore sconosciuto";
     if (message.includes("Password") || message.includes("encrypted")) {
