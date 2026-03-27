@@ -14,19 +14,24 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
  * 
  * @param clerkToken - JWT Token generato runtime da Clerk (`await getToken({ template: 'supabase' })`)
  */
+let cachedClient: any = null;
+let cachedToken: string | null = null;
+
 export function createClerkSupabaseClient(clerkToken?: string | null) {
-  // Se non viene passato un token Clerk custom, viene inizializzato il client in modalità anonima/pubblica.
-  if (!clerkToken) {
-    return createClient(supabaseUrl, supabaseAnonKey);
+  const token = clerkToken ?? null;
+
+  if (cachedClient && cachedToken === token) {
+    return cachedClient;
   }
 
-  // Se viene fornito un token Clerk, viene passato come Intestazione "Authorization: Bearer <TOKEN>".
-  // Le policy Supabase che sfruttano `auth.jwt() ->> 'sub'` leggeranno correttamente l'identità dell'utente Clerk.
-  return createClient(supabaseUrl, supabaseAnonKey, {
+  const client = createClient(supabaseUrl, supabaseAnonKey, {
     global: {
-      headers: {
-        Authorization: `Bearer ${clerkToken}`,
-      },
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
     },
   });
+
+  cachedClient = client;
+  cachedToken = token;
+  
+  return client;
 }

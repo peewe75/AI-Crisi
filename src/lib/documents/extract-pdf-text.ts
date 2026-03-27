@@ -14,13 +14,30 @@ function normalizeExtractedText(text: string) {
 }
 
 export async function extractPdfTextFromBytes(bytes: Uint8Array) {
-  const parser = new PDFParse({ data: bytes });
+  if (!bytes || bytes.length === 0) {
+    throw new Error("Il file fornito è vuoto o non caricato correttamente.");
+  }
 
   try {
-    const result = await parser.getText();
-    return normalizeExtractedText(result.text ?? "");
-  } finally {
-    await parser.destroy();
+    const parser = new PDFParse({ data: bytes });
+    try {
+      const result = await parser.getText();
+      const text = normalizeExtractedText(result.text ?? "");
+      
+      if (!text || text.trim().length === 0) {
+        throw new Error("Nessun testo estraibile trovato nel PDF (potrebbe essere un'immagine o protetto).");
+      }
+      
+      return text;
+    } finally {
+      await parser.destroy();
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Errore sconosciuto";
+    if (message.includes("Password") || message.includes("encrypted")) {
+      throw new Error("Il PDF è protetto da password e non può essere elaborato.");
+    }
+    throw new Error(`Estrazione testo fallita: ${message}`);
   }
 }
 

@@ -75,17 +75,23 @@ export async function POST(request: Request) {
 
     const extractedText = await extractDocumentTextFromStoragePath(
       document.file_path
-    );
+    ).catch((error) => {
+      console.error(`[OCR Error] Document ${documentId}:`, error);
+      throw error;
+    });
 
     const admin = getSupabaseAdminClient();
     const { error: updateError } = await admin
       .from("documents")
-      .update({ extracted_text: extractedText || null })
+      .update({ 
+        extracted_text: extractedText || null,
+        // Potremmo aggiungere un flag 'last_ocr_error' se volessimo monitorare
+      })
       .eq("id", documentId);
 
     if (updateError) {
       return NextResponse.json(
-        { error: `Aggiornamento documento fallito: ${updateError.message}` },
+        { error: `Aggiornamento DB fallito dopo estrazione: ${updateError.message}` },
         { status: 500 }
       );
     }
@@ -94,7 +100,7 @@ export async function POST(request: Request) {
       {
         documentId,
         extractedText,
-        extractedTextLength: extractedText.length,
+        extractedTextLength: extractedText?.length ?? 0,
         skipped: false,
       },
       { status: 200 }
@@ -105,6 +111,14 @@ export async function POST(request: Request) {
         ? error.message
         : "Errore inatteso durante l'estrazione del testo documento.";
 
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("[API extract-text] Unexpected error:", error);
+
+    return NextResponse.json(
+      { 
+        error: message,
+        details: error instanceof Error ? error.stack : undefined 
+      }, 
+      { status: 500 }
+    );
   }
 }

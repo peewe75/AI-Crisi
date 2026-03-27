@@ -1,4 +1,4 @@
-﻿import "server-only";
+import "server-only";
 
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
@@ -856,6 +856,38 @@ export async function listAdminBackgroundSyncRuns(params?: {
     latestRun: (latestRunResponse.data as AdminBackgroundSyncRun | null) ?? null,
     latestSuccessAt,
     nextEligibleSyncAt,
+  };
+}
+
+export type AdminOverviewStats = {
+  totalPractices: number;
+  totalDocuments: number;
+  documentsWithoutText: number;
+  latestPractices: AdminPracticeListItem[];
+};
+
+export async function getAdminOverviewStats(): Promise<AdminOverviewStats> {
+  const supabase = getSupabaseAdminClient();
+  
+  const [
+    { count: totalPractices },
+    { count: totalDocuments },
+    { count: documentsWithoutText },
+    practicePage
+  ] = await Promise.all([
+    supabase.from("practices").select("*", { count: "exact", head: true }),
+    supabase.from("documents").select("*", { count: "exact", head: true }),
+    supabase.from("documents")
+      .select("*", { count: "exact", head: true })
+      .or("extracted_text.is.null,extracted_text.eq."),
+    listAdminPractices({ pageSize: 5 })
+  ]);
+
+  return {
+    totalPractices: totalPractices ?? 0,
+    totalDocuments: totalDocuments ?? 0,
+    documentsWithoutText: documentsWithoutText ?? 0,
+    latestPractices: practicePage.items
   };
 }
 

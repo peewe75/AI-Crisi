@@ -302,6 +302,37 @@ export default function PracticeWizard() {
   const [companyName, setCompanyName] = useState<string>("");
   const [documents, setDocuments] = useState<any[]>([]);
   const [uploading, setUploading] = useState<string | null>(null);
+  const [processingDocs, setProcessingDocs] = useState<Record<string, "processing" | "error" | "success">>({});
+
+  const triggerExtraction = async (documentId: string) => {
+    setProcessingDocs(prev => ({ ...prev, [documentId]: "processing" }));
+    try {
+      const response = await fetch("/api/documents/extract-text", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documentId }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Estrazione fallita");
+      }
+
+      const payload = await response.json();
+      setProcessingDocs(prev => ({ ...prev, [documentId]: "success" }));
+      
+      // Update the document in local state with the extracted text
+      setDocuments(prev => prev.map(d => 
+        d.id === documentId ? { ...d, extracted_text: payload.extractedText } : d
+      ));
+      
+      return payload.extractedText;
+    } catch (err) {
+      console.error("Extraction error:", err);
+      setProcessingDocs(prev => ({ ...prev, [documentId]: "error" }));
+      return null;
+    }
+  };
 
   const onDrop = async (acceptedFiles: File[], category: string) => {
     if (!practiceId) return;
@@ -328,21 +359,10 @@ export default function PracticeWizard() {
         .single();
       if (dbError) throw new Error("Registrazione DB fallita: " + dbError.message);
 
-      let enrichedRecord = docRecord;
-      const extractionResponse = await fetch("/api/documents/extract-text", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ documentId: docRecord.id }),
-      });
-
-      if (extractionResponse.ok) {
-        const extractionPayload = await extractionResponse.json();
-        enrichedRecord = { ...docRecord, extracted_text: extractionPayload.extractedText ?? null };
-      } else {
-        console.warn("Estrazione testo documento non riuscita per", docRecord.id);
-      }
-
-      setDocuments(prev => [...prev, enrichedRecord]);
+      setDocuments(prev => [...prev, docRecord]);
+      
+      // Trigger extraction asynchronously
+      triggerExtraction(docRecord.id);
     } catch (err: any) {
       console.error(err);
       alert(err.message);
@@ -412,7 +432,7 @@ export default function PracticeWizard() {
                           <h4 className="text-sm font-semibold text-slate-700 uppercase tracking-wider mb-2">File Trasmessi</h4>
                           {documents.filter(d => d.category === category).map((doc, idx) => (
                             <div key={doc.id ?? idx} className="flex items-center justify-between gap-4 bg-white p-4 rounded-lg shadow-sm border border-slate-200">
-                              <div className="min-w-0">
+                              <div className="min-w-0 flex-1">
                                 <span className="text-sm font-medium text-slate-800 break-all truncate mr-4 block">
                                   {doc.file_path.split("/").pop()}
                                 </span>
@@ -434,12 +454,47 @@ export default function PracticeWizard() {
                                       <Download className="mr-1 h-3.5 w-3.5" />
                                       Scarica
                                     </a>
+                                    {processingDocs[doc.id] === "error" && (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => triggerExtraction(doc.id)}
+                                        className="h-7 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                                      >
+                                        Riprova OCR
+                                      </Button>
+                                    )}
                                   </div>
                                 ) : null}
                               </div>
-                              <div className="flex bg-green-50 px-2 py-1 rounded text-green-700 items-center justify-center text-xs font-bold gap-1 shrink-0 self-start">
-                                <CheckCircle2 className="h-4 w-4" />
-                                Caricato
+                              
+                              <div className="flex flex-col items-end gap-2 shrink-0">
+                                <div className="flex bg-green-50 px-2 py-1 rounded text-green-700 items-center justify-center text-xs font-bold gap-1">
+                                  <CheckCircle2 className="h-4 w-4" />
+                                  File OK
+                                </div>
+                                
+                                {processingDocs[doc.id] === "processing" ? (
+                                  <div className="flex bg-blue-50 px-2 py-1 rounded text-blue-700 items-center justify-center text-xs font-bold gap-1 animate-pulse">
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                    OCR...
+                                  </div>
+                                ) : (doc.extracted_text || processingDocs[doc.id] === "success") ? (
+                                  <div className="flex bg-indigo-50 px-2 py-1 rounded text-indigo-700 items-center justify-center text-xs font-bold gap-1">
+                                    <CheckCircle2 className="h-3 w-3" />
+                                    Testo OK
+                                  </div>
+                                ) : processingDocs[doc.id] === "error" ? (
+                                  <div className="flex bg-red-50 px-2 py-1 rounded text-red-700 items-center justify-center text-xs font-bold gap-1">
+                                    <AlertCircle className="h-3 w-3" />
+                                    Errore OCR
+                                  </div>
+                                ) : (
+                                  <div className="flex bg-amber-50 px-2 py-1 rounded text-amber-700 items-center justify-center text-xs font-bold gap-1 cursor-help" title="Il testo non è ancora disponibile. Fai clic su 'Riprova OCR' per tentare nuovamente.">
+                                    <AlertCircle className="h-3 w-3" />
+                                    No Testo
+                                  </div>
+                                )}
                               </div>
                             </div>
                           ))}

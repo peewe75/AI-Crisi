@@ -1,10 +1,11 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Archive, Download, Eye, FileStack, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getAdminPracticeDetail, requireAdminAccess } from "@/lib/admin";
+import { AdminDocumentActions } from "@/components/admin/AdminDocumentActions";
 
 const INLINE_ACTION_LINK_CLASS =
   "inline-flex h-7 items-center justify-center rounded-[min(var(--radius-md),12px)] border border-slate-200 bg-background px-2.5 text-[0.8rem] font-medium text-slate-700 transition-all hover:bg-muted hover:text-foreground";
@@ -143,6 +144,7 @@ export default async function AdminPracticeDetailPage({
                         <Download className="mr-2 h-4 w-4" />
                         Scarica
                       </Link>
+                      <AdminDocumentActions documentId={document.id} />
                     </div>
                   </div>
                 </div>

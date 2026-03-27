@@ -11,7 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { listAdminPractices, requireAdminAccess } from "@/lib/admin";
+import { getAdminOverviewStats, listAdminPractices, requireAdminAccess } from "@/lib/admin";
 import { PRACTICE_DOCUMENT_CATEGORIES } from "@/lib/practices";
 
 function buildAdminPageHref(params: {
@@ -153,6 +153,7 @@ export default async function AdminOverviewPage({
     extractedText,
     sort,
   });
+  const stats = await getAdminOverviewStats();
   const practices = practicePage.items;
   const rangeStart =
     practicePage.total === 0 ? 0 : (practicePage.page - 1) * practicePage.pageSize + 1;
@@ -193,26 +194,29 @@ export default async function AdminOverviewPage({
           <div className="grid grid-cols-2 gap-3 sm:w-auto">
             <Card className="border-slate-200 shadow-none">
               <CardContent className="p-4">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
-                  Totale viste
+                <p className="text-xs uppercase tracking-[0.15em] text-slate-500">
+                  Totale Pratiche
                 </p>
                 <p className="mt-2 text-2xl font-semibold text-slate-950">
-                  {practicePage.total}
+                  {stats.totalPractices}
                 </p>
               </CardContent>
             </Card>
             <Card className="border-slate-200 shadow-none">
               <CardContent className="p-4">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
-                  Aziende uniche
+                <p className="text-xs uppercase tracking-[0.15em] text-slate-500">
+                  Documenti Totali
                 </p>
-                <p className="mt-2 text-2xl font-semibold text-slate-950">
-                  {
-                    new Set(
-                      practicePage.items.map((practice) => practice.client?.id ?? practice.id)
-                    ).size
-                  }
-                </p>
+                <div className="mt-2 flex items-baseline gap-2">
+                  <p className="text-2xl font-semibold text-slate-950">
+                    {stats.totalDocuments}
+                  </p>
+                  {stats.documentsWithoutText > 0 && (
+                    <span className="text-xs font-medium text-amber-600">
+                      ({stats.documentsWithoutText} no testo)
+                    </span>
+                  )}
+                </div>
               </CardContent>
             </Card>
           </div>
